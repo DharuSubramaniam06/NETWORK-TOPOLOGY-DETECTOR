@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Network Topology Detector</title>
+
+<style>
+    body {
+        margin: 0;
+        font-family: 'Segoe UI', sans-serif;
+        background: #0f172a;
+        color: #e2e8f0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+    }
+
+    .container {
+        background: #1e293b;
+        padding: 30px;
+        border-radius: 15px;
+        width: 600px;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        text-align: center;
+    }
+
+    h1 {
+        margin-bottom: 20px;
+        font-weight: 600;
+    }
+
+    .controls {
+        margin-bottom: 20px;
+    }
+
+    input[type="number"] {
+        padding: 8px;
+        border-radius: 6px;
+        border: none;
+        width: 80px;
+        text-align: center;
+        background: #334155;
+        color: white;
+    }
+
+    button {
+        padding: 10px 15px;
+        margin-left: 10px;
+        border: none;
+        border-radius: 6px;
+        background: #3b82f6;
+        color: white;
+        cursor: pointer;
+        font-weight: 500;
+        transition: 0.3s;
+    }
+
+    button:hover {
+        background: #2563eb;
+        transform: scale(1.05);
+    }
+
+    #matrix {
+        margin: 20px 0;
+        display: grid;
+        justify-content: center;
+        gap: 5px;
+    }
+
+    .row {
+        display: flex;
+        justify-content: center;
+    }
+
+    input.cell {
+        width: 40px;
+        height: 40px;
+        background: #020617;
+        border: 1px solid #475569;
+        border-radius: 6px;
+        text-align: center;
+        color: white;
+        font-size: 16px;
+    }
+
+    #result {
+        margin-top: 15px;
+        font-size: 18px;
+        font-weight: 600;
+        padding: 10px;
+        border-radius: 8px;
+    }
+
+    canvas {
+        margin-top: 20px;
+        background: #020617;
+        border-radius: 10px;
+        border: 1px solid #334155;
+    }
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+    <h1>Network Topology Detector</h1>
+
+    <div class="controls">
+        <label>Nodes (n > 3): </label>
+        <input type="number" id="size">
+        <button onclick="generateMatrix()">Generate</button>
+    </div>
+
+    <div id="matrix"></div>
+
+    <button onclick="detect()">Detect Topology</button>
+
+    <div id="result"></div>
+
+    <canvas id="graphCanvas" width="400" height="400"></canvas>
+</div>
+
+<script>
+
+let n = 0;
+
+function generateMatrix() {
+    n = parseInt(document.getElementById("size").value);
+    if (n <= 3) return alert("n must be > 3");
+
+    let matrixDiv = document.getElementById("matrix");
+    matrixDiv.innerHTML = "";
+
+    for (let i = 0; i < n; i++) {
+        let row = document.createElement("div");
+        row.className = "row";
+
+        for (let j = 0; j < n; j++) {
+            let input = document.createElement("input");
+            input.className = "cell";
+            input.id = `cell-${i}-${j}`;
+            row.appendChild(input);
+        }
+
+        matrixDiv.appendChild(row);
+    }
+}
+
+function isConnected(A) {
+    let visited = Array(n).fill(false);
+
+    function dfs(node) {
+        visited[node] = true;
+        for (let j = 0; j < n; j++) {
+            if (A[node][j] === 1 && !visited[j]) dfs(j);
+        }
+    }
+
+    dfs(0);
+    return visited.every(v => v);
+}
+
+function detect() {
+    let A = [];
+
+    try {
+        for (let i = 0; i < n; i++) {
+            let row = [];
+            for (let j = 0; j < n; j++) {
+                let val = document.getElementById(`cell-${i}-${j}`).value;
+                if (val !== "0" && val !== "1") throw "err";
+                row.push(parseInt(val));
+            }
+            A.push(row);
+        }
+
+        for (let i = 0; i < n; i++) {
+            if (A[i][i] !== 0) return show("Self-loops detected", "#ef4444");
+            for (let j = 0; j < n; j++) {
+                if (A[i][j] !== A[j][i]) return show("Matrix not symmetric", "#ef4444");
+            }
+        }
+
+        let degrees = A.map(r => r.reduce((a,b)=>a+b,0));
+        let connected = isConnected(A);
+
+        if (degrees.every(d => d === 2) && connected) {
+            show("Ring Topology", "#22c55e");
+            drawRing();
+            return;
+        }
+
+        let hubs = degrees.filter(d => d === n-1).length;
+        if (hubs === 1 && degrees.filter(d => d === 1).length === n-1) {
+            show("Star Topology", "#22c55e");
+            drawStar();
+            return;
+        }
+
+        if (degrees.every(d => d === n-1) && connected) {
+            show("Fully Connected Mesh", "#22c55e");
+            drawMesh();
+            return;
+        }
+
+        show("No Matching Topology", "#f59e0b");
+        clearCanvas();
+
+    } catch {
+        show("Enter only 0 or 1", "#ef4444");
+    }
+}
+
+function show(msg, color) {
+    let res = document.getElementById("result");
+    res.innerText = msg;
+    res.style.background = color + "22";
+    res.style.color = color;
+}
+
+function clearCanvas() {
+    let ctx = document.getElementById("graphCanvas").getContext("2d");
+    ctx.clearRect(0,0,400,400);
+}
+
+function drawNodes(radius=130) {
+    let nodes = [];
+    let cx = 200, cy = 200;
+
+    for (let i = 0; i < n; i++) {
+        let angle = (2 * Math.PI * i) / n;
+        nodes.push({
+            x: cx + radius * Math.cos(angle),
+            y: cy + radius * Math.sin(angle)
+        });
+    }
+    return nodes;
+}
+
+function drawRing() {
+    clearCanvas();
+    let ctx = graphCanvas.getContext("2d");
+    let nodes = drawNodes();
+
+    ctx.strokeStyle = "#38bdf8";
+
+    for (let i = 0; i < n; i++) {
+        let next = (i + 1) % n;
+        ctx.beginPath();
+        ctx.moveTo(nodes[i].x, nodes[i].y);
+        ctx.lineTo(nodes[next].x, nodes[next].y);
+        ctx.stroke();
+    }
+
+    drawNodesCircle(nodes);
+}
+
+function drawStar() {
+    clearCanvas();
+    let ctx = graphCanvas.getContext("2d");
+    let nodes = drawNodes();
+
+    ctx.strokeStyle = "#facc15";
+
+    let center = {x:200, y:200};
+
+    nodes.forEach(node => {
+        ctx.beginPath();
+        ctx.moveTo(center.x, center.y);
+        ctx.lineTo(node.x, node.y);
+        ctx.stroke();
+    });
+
+    drawNodesCircle([...nodes, center]);
+}
+
+function drawMesh() {
+    clearCanvas();
+    let ctx = graphCanvas.getContext("2d");
+    let nodes = drawNodes();
+
+    ctx.strokeStyle = "#c084fc";
+
+    for (let i = 0; i < n; i++) {
+        for (let j = i+1; j < n; j++) {
+            ctx.beginPath();
+            ctx.moveTo(nodes[i].x, nodes[i].y);
+            ctx.lineTo(nodes[j].x, nodes[j].y);
+            ctx.stroke();
+        }
+    }
+
+    drawNodesCircle(nodes);
+}
+
+function drawNodesCircle(nodes) {
+    let ctx = graphCanvas.getContext("2d");
+
+    nodes.forEach((node, i) => {
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 10, 0, 2*Math.PI);
+        ctx.fillStyle = "#3b82f6";
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.fillText(i, node.x - 3, node.y + 4);
+    });
+}
+
+</script>
+
+</body>
+</html>
